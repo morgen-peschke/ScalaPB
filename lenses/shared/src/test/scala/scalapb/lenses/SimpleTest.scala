@@ -1,7 +1,12 @@
 package scalapb.lenses
 
+import java.lang.reflect.Method
+
 import utest._
 import com.github.ghik.silencer.silent
+
+import scala.reflect.ClassTag
+import scala.reflect.runtime.universe.WeakTypeTag
 
 case class Person(firstName: String, lastName: String, age: Int, address: Address)
     extends Updatable[Person]
@@ -25,49 +30,146 @@ case class CollectionTypes(
     sett: Set[String] = Set.empty
 ) extends Updatable[CollectionTypes]
 
+case class ZipPathTest(
+  direct: Person,
+  indirect: Vector[Person]
+)
+
+case class NestedZipPathTest(people: ZipPathTest)
+
+trait Render[A] {
+  def render(a: A): String = describeUsing(new StringBuilder().append('_'), a).toString()
+  def describeUsing(sb: StringBuilder, a: A): StringBuilder
+}
+object Render {
+  def render[A](a: A)(implicit r: Render[A]): String = r.render(a)
+
+  def renderType[T: WeakTypeTag]: String = implicitly[WeakTypeTag[T]].tpe.toString
+
+  implicit val renderMethodField: Render[Path.Element.Field[Method]] =
+    (sb: StringBuilder, element: Path.Element.Field[Method]) =>
+      sb.append('.').append(element.field.getName)
+
+  implicit val renderStringApply: Render[Path.Element.Apply[String]] =
+      (sb: StringBuilder, element: Path.Element.Apply[String]) =>
+        sb.append('(')
+          .append('"')
+          .append(element.key)
+          .append('"')
+          .append(')')
+
+  implicit val renderIntApply: Render[Path.Element.Apply[Int]] =
+      (sb: StringBuilder, element: Path.Element.Apply[Int]) =>
+        sb.append('(')
+          .append(element.key)
+          .append(')')
+
+  implicit val renderPersonApply: Render[Path.Element.Apply[Person]] =
+    (sb: StringBuilder, element: Path.Element.Apply[Person]) =>
+      sb.append('(')
+        .append(element.key.lastName)
+        .append(", ")
+        .append(element.key.firstName)
+        .append(')')
+
+  implicit val renderEmpty: Render[Path.Empty.type] = (sb, _) => sb
+
+  implicit def renderComposed[P <: Path, S <: Path](implicit renderPrefix: Render[P], renderSuffix: Render[S]): Render[Path.Composed[P, S]] =
+    (sb: StringBuilder, path: Path.Composed[P, S]) =>
+      renderSuffix.describeUsing(
+        renderPrefix.describeUsing(sb, path.prefix),
+        path.suffix
+      )
+
+  implicit def renderZipped[P0 <: Path, P1 <: Path](implicit renderP0: Render[P0], renderP1: Render[P1]): Render[Path.Zipped[P0, P1]] =
+    new Render[Path.Zipped[P0, P1]] {
+      override def render(path: Path.Zipped[P0, P1]): String = describeUsing(new StringBuilder(), path).toString()
+
+      override def describeUsing(sb: StringBuilder, path: Path.Zipped[P0, P1]): StringBuilder = {
+        val withOpenParen = sb.append('(').append('_')
+        val withP0 = renderP0.describeUsing(withOpenParen, path.p0)
+        val withSeparator = withP0.append(',').append('_')
+        val withP1 = renderP1.describeUsing(withSeparator, path.p1)
+        withP1.append(')')
+      }
+    }
+
+  implicit def renderAppended[P <: Path, E <: Path.Element](implicit renderParent: Render[P], renderElement: Render[E]): Render[Path.Appended[P, E]] =
+     (sb: StringBuilder, path: Path.Appended[P, E]) =>
+       renderElement.describeUsing(
+         renderParent.describeUsing(sb, path.parent),
+         path.element
+       )
+
+  implicit def renderSingle[E <: Path.Element](implicit renderElement: Render[E]): Render[Path.Single[E]] =
+    (sb: StringBuilder, path: Path.Single[E]) =>
+      renderElement.describeUsing(sb, path.element)
+}
+
 @silent("discarded non-Unit value")
 object SimpleTest extends TestSuite {
-  implicit class RoleMutation[U](f: Lens[U, Role]) extends ObjectLens[U, Role](f) {
-    def name = field(_.name)((p, f) => p.copy(name = f))
-
-    def person = field(_.person)((p, f) => p.copy(person = f))
-
-    def replacement = field(_.replacement)((p, f) => p.copy(replacement = f))
+  /**
+   * Helper to grab the named method.
+   * This is very specific to this test, and doesn't care about overloads, etc
+   */
+  def lookupMethod[A: ClassTag](name: String): Method = {
+    val cte = implicitly[ClassTag[A]]
+    cte.runtimeClass.getMethods.find(_.getName == name).getOrElse {
+      throw new NoSuchElementException(s"Unable to find method named <$name> in $cte")
+    }
   }
 
-  implicit class PersonMutation[U](f: Lens[U, Person]) extends ObjectLens[U, Person](f) {
-    def firstName = field(_.firstName)((p, f) => p.copy(firstName = f))
+  implicit class RoleMutation[U, P <: Path](f: Lens[U, Role, P]) extends ObjectLens[U, Role, P](f) {
+    def name = field(_.name)((p, f) => p.copy(name = f))(_ => Path.Empty.appendField(lookupMethod[Role]("name")))
 
-    def lastName = field(_.lastName)((p, f) => p.copy(lastName = f))
+    def person = field(_.person)((p, f) => p.copy(person = f))(_ => Path.Empty.appendField(lookupMethod[Role]("person")))
 
-    def address: Lens[U, Address] = field(_.address)((p, f) => p.copy(address = f))
+    def replacement = field(_.replacement)((p, f) => p.copy(replacement = f))(_ => Path.Empty.appendField(lookupMethod[Role]("replacement")))
   }
 
-  implicit class AddressLens[U](val f: Lens[U, Address]) extends ObjectLens[U, Address](f) {
-    def city = field(_.city)((p, f) => p.copy(city = f))
+  implicit class PersonMutation[U, P <: Path](f: Lens[U, Person, P]) extends ObjectLens[U, Person, P](f) {
+    def firstName = field(_.firstName)((p, f) => p.copy(firstName = f))(_ => Path.Empty.appendField(lookupMethod[Person]("firstName")))
 
-    def street = field(_.street)((p, f) => p.copy(street = f))
+    def lastName = field(_.lastName)((p, f) => p.copy(lastName = f))(_ => Path.Empty.appendField(lookupMethod[Person]("lastName")))
 
-    def residents: Lens[U, Seq[Person]] = field(_.residents)((p, f) => p.copy(residents = f))
+    def address = field(_.address)((p, f) => p.copy(address = f))(_ => Path.Empty.appendField(lookupMethod[Person]("address")))
   }
 
-  implicit class MapTestLens[U](val f: Lens[U, MapTest]) extends ObjectLens[U, MapTest](f) {
-    def intMap = field(_.intMap)((p, f) => p.copy(intMap = f))
+  implicit class AddressLens[U, P <: Path](val f: Lens[U, Address, P]) extends ObjectLens[U, Address, P](f) {
+    def city = field(_.city)((p, f) => p.copy(city = f))(_ => Path.Empty.appendField(lookupMethod[Address]("city")))
 
-    def nameMap = field(_.nameMap)((p, f) => p.copy(nameMap = f))
+    def street = field(_.street)((p, f) => p.copy(street = f))(_ => Path.Empty.appendField(lookupMethod[Address]("street")))
 
-    def addressMap = field(_.addressMap)((p, f) => p.copy(addressMap = f))
+    def residents = field(_.residents)((p, f) => p.copy(residents = f))(_ => Path.Empty.appendField(lookupMethod[Address]("residents")))
   }
 
-  implicit class CollectionTypesLens[U](val f: Lens[U, CollectionTypes])
-      extends ObjectLens[U, CollectionTypes](f) {
-    def iSeq = field(_.iSeq)((p, f) => p.copy(iSeq = f))
+  implicit class MapTestLens[U, P <: Path](val f: Lens[U, MapTest, P]) extends ObjectLens[U, MapTest, P](f) {
+    def intMap = field(_.intMap)((p, f) => p.copy(intMap = f))(_ => Path.Empty.appendField(lookupMethod[MapTest]("intMap")))
 
-    def vector = field(_.vector)((p, f) => p.copy(vector = f))
+    def nameMap = field(_.nameMap)((p, f) => p.copy(nameMap = f))(_ => Path.Empty.appendField(lookupMethod[MapTest]("nameMap")))
 
-    def list = field(_.list)((p, f) => p.copy(list = f))
+    def addressMap = field(_.addressMap)((p, f) => p.copy(addressMap = f))(_ => Path.Empty.appendField(lookupMethod[MapTest]("addressMap")))
+  }
 
-    def sett = field(_.sett)((p, f) => p.copy(sett = f))
+  implicit class CollectionTypesLens[U, P <: Path](val f: Lens[U, CollectionTypes, P])
+      extends ObjectLens[U, CollectionTypes, P](f) {
+    def iSeq = field(_.iSeq)((p, f) => p.copy(iSeq = f))(_ => Path.Empty.appendField(lookupMethod[CollectionTypes]("iSeq")))
+
+    def vector = field(_.vector)((p, f) => p.copy(vector = f))(_ => Path.Empty.appendField(lookupMethod[CollectionTypes]("vector")))
+
+    def list = field(_.list)((p, f) => p.copy(list = f))(_ => Path.Empty.appendField(lookupMethod[CollectionTypes]("list")))
+
+    def sett = field(_.sett)((p, f) => p.copy(sett = f))(_ => Path.Empty.appendField(lookupMethod[CollectionTypes]("sett")))
+  }
+
+  implicit class ZipPathTestLens[U, P <: Path](val f: Lens[U, ZipPathTest, P]) extends ObjectLens[U, ZipPathTest, P](f) {
+    def direct = field(_.direct)((p, f) => p.copy(direct = f))(_ => Path.Empty.appendField(lookupMethod[ZipPathTest]("direct")))
+
+    def indirect = field(_.indirect)((p, f) => p.copy(indirect = f))(_ => Path.Empty.appendField(lookupMethod[ZipPathTest]("indirect")))
+  }
+
+  implicit class NestedZipPathTestLens[U, P <: Path](val f: Lens[U, NestedZipPathTest, P]) extends ObjectLens[U, NestedZipPathTest, P](f) {
+    def people = field(_.people)((p, f) => p.copy(people = f))(_ => Path.Empty.appendField(lookupMethod[NestedZipPathTest]("people")))
   }
 
   object RoleMutation extends RoleMutation(Lens.unit)
@@ -89,6 +191,13 @@ object SimpleTest extends TestSuite {
   val mapTest = MapTest(
     intMap = Map(3        -> "three", 4 -> "four"),
     addressMap = Map(mosh -> Address("someStreet", "someCity", "someState"))
+  )
+
+  val zipPath = NestedZipPathTest(
+    ZipPathTest(
+      mosh,
+      Vector(mosh, josh)
+    )
   )
 
   val tests = Tests {
@@ -269,6 +378,36 @@ object SimpleTest extends TestSuite {
         list = List("3", "4"),
         vector = Vector("x", "y")
       )
+    }
+
+    def renderLens[U, A, P <: Path](base: U, lens: Lens[U, A, P])(implicit renderPath: Render[P]): String =
+      Render.render(lens.path(base))
+
+    "it should build the expected lens paths for simple lenses" - {
+      renderLens(mosh, Lens.unit[Person].address) ==> "_.address"
+    }
+
+    "it should build the expected lens path for nested lenses" - {
+      renderLens(mosh, Lens.unit[Person].address.city) ==> "_.address.city"
+    }
+
+    "it should build the expected lens path for apply selections" - {
+      renderLens(mapTest, Lens.unit[MapTest].addressMap(mosh).street) ==> "_.addressMap(Ben, Mosh).street"
+      renderLens(mapTest, Lens.unit[MapTest].intMap(3)) ==> "_.intMap(3)"
+    }
+
+    "it should build the expected lens path for zipped lenses" - {
+      renderLens(
+        mapTest,
+        Lens.unit[MapTest].intMap(3) zip Lens.unit[MapTest].addressMap(mosh).street
+      ) ==> "(_.intMap(3),_.addressMap(Ben, Mosh).street)"
+
+      renderLens(
+        zipPath,
+        Lens.unit[NestedZipPathTest].people.compose {
+          Lens.unit[ZipPathTest].direct zip Lens.unit[ZipPathTest].indirect(1)
+        }
+      ) ==> "_.people(_.direct,_.indirect(1))"
     }
   }
 }
