@@ -119,7 +119,7 @@ object SimpleTest extends TestSuite {
     }
   }
 
-  implicit class RoleMutation[U, P <: Path](f: Lens[U, Role, P]) extends ObjectLens[U, Role, P](f) {
+  implicit class RoleMutation[U, P <: Path](f: Lens.Aux[U, Role, P]) extends ObjectLens[U, Role, P](f) {
     def name = field(_.name)((p, f) => p.copy(name = f))(_ => Path.Empty.appendField(lookupMethod[Role]("name")))
 
     def person = field(_.person)((p, f) => p.copy(person = f))(_ => Path.Empty.appendField(lookupMethod[Role]("person")))
@@ -127,7 +127,7 @@ object SimpleTest extends TestSuite {
     def replacement = field(_.replacement)((p, f) => p.copy(replacement = f))(_ => Path.Empty.appendField(lookupMethod[Role]("replacement")))
   }
 
-  implicit class PersonMutation[U, P <: Path](f: Lens[U, Person, P]) extends ObjectLens[U, Person, P](f) {
+  implicit class PersonMutation[U, P <: Path](f: Lens.Aux[U, Person, P]) extends ObjectLens[U, Person, P](f) {
     def firstName = field(_.firstName)((p, f) => p.copy(firstName = f))(_ => Path.Empty.appendField(lookupMethod[Person]("firstName")))
 
     def lastName = field(_.lastName)((p, f) => p.copy(lastName = f))(_ => Path.Empty.appendField(lookupMethod[Person]("lastName")))
@@ -135,7 +135,7 @@ object SimpleTest extends TestSuite {
     def address = field(_.address)((p, f) => p.copy(address = f))(_ => Path.Empty.appendField(lookupMethod[Person]("address")))
   }
 
-  implicit class AddressLens[U, P <: Path](val f: Lens[U, Address, P]) extends ObjectLens[U, Address, P](f) {
+  implicit class AddressLens[U, P <: Path](val f: Lens.Aux[U, Address, P]) extends ObjectLens[U, Address, P](f) {
     def city = field(_.city)((p, f) => p.copy(city = f))(_ => Path.Empty.appendField(lookupMethod[Address]("city")))
 
     def street = field(_.street)((p, f) => p.copy(street = f))(_ => Path.Empty.appendField(lookupMethod[Address]("street")))
@@ -143,7 +143,7 @@ object SimpleTest extends TestSuite {
     def residents = field(_.residents)((p, f) => p.copy(residents = f))(_ => Path.Empty.appendField(lookupMethod[Address]("residents")))
   }
 
-  implicit class MapTestLens[U, P <: Path](val f: Lens[U, MapTest, P]) extends ObjectLens[U, MapTest, P](f) {
+  implicit class MapTestLens[U, P <: Path](val f: Lens.Aux[U, MapTest, P]) extends ObjectLens[U, MapTest, P](f) {
     def intMap = field(_.intMap)((p, f) => p.copy(intMap = f))(_ => Path.Empty.appendField(lookupMethod[MapTest]("intMap")))
 
     def nameMap = field(_.nameMap)((p, f) => p.copy(nameMap = f))(_ => Path.Empty.appendField(lookupMethod[MapTest]("nameMap")))
@@ -151,7 +151,7 @@ object SimpleTest extends TestSuite {
     def addressMap = field(_.addressMap)((p, f) => p.copy(addressMap = f))(_ => Path.Empty.appendField(lookupMethod[MapTest]("addressMap")))
   }
 
-  implicit class CollectionTypesLens[U, P <: Path](val f: Lens[U, CollectionTypes, P])
+  implicit class CollectionTypesLens[U, P <: Path](val f: Lens.Aux[U, CollectionTypes, P])
       extends ObjectLens[U, CollectionTypes, P](f) {
     def iSeq = field(_.iSeq)((p, f) => p.copy(iSeq = f))(_ => Path.Empty.appendField(lookupMethod[CollectionTypes]("iSeq")))
 
@@ -162,13 +162,13 @@ object SimpleTest extends TestSuite {
     def sett = field(_.sett)((p, f) => p.copy(sett = f))(_ => Path.Empty.appendField(lookupMethod[CollectionTypes]("sett")))
   }
 
-  implicit class ZipPathTestLens[U, P <: Path](val f: Lens[U, ZipPathTest, P]) extends ObjectLens[U, ZipPathTest, P](f) {
+  implicit class ZipPathTestLens[U, P <: Path](val f: Lens.Aux[U, ZipPathTest, P]) extends ObjectLens[U, ZipPathTest, P](f) {
     def direct = field(_.direct)((p, f) => p.copy(direct = f))(_ => Path.Empty.appendField(lookupMethod[ZipPathTest]("direct")))
 
     def indirect = field(_.indirect)((p, f) => p.copy(indirect = f))(_ => Path.Empty.appendField(lookupMethod[ZipPathTest]("indirect")))
   }
 
-  implicit class NestedZipPathTestLens[U, P <: Path](val f: Lens[U, NestedZipPathTest, P]) extends ObjectLens[U, NestedZipPathTest, P](f) {
+  implicit class NestedZipPathTestLens[U, P <: Path](val f: Lens.Aux[U, NestedZipPathTest, P]) extends ObjectLens[U, NestedZipPathTest, P](f) {
     def people = field(_.people)((p, f) => p.copy(people = f))(_ => Path.Empty.appendField(lookupMethod[NestedZipPathTest]("people")))
   }
 
@@ -380,7 +380,7 @@ object SimpleTest extends TestSuite {
       )
     }
 
-    def renderLens[U, A, P <: Path](base: U, lens: Lens[U, A, P])(implicit renderPath: Render[P]): String =
+    def renderLens[U, A, P <: Path](base: U, lens: Lens.Aux[U, A, P])(implicit renderPath: Render[P]): String =
       Render.render(lens.path(base))
 
     "it should build the expected lens paths for simple lenses" - {

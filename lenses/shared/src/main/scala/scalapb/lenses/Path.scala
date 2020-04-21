@@ -5,7 +5,7 @@ object Path {
   sealed abstract class Element
   object Element {
     final case class Field[Descriptor](field: Descriptor) extends Element
-    final case class Apply[K](key: K)                     extends Element
+    final case class Apply[Key](key: Key)                 extends Element
   }
 
   case object Empty                                                   extends Path
